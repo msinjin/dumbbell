@@ -1,0 +1,32 @@
+---
+title: "Human Activity Recognition: Technique"
+author: "Mark St. John"
+date: '2018-09-26'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Background
+
+# Building the model
+
+```{r the_model}
+
+training <- read.csv("pml-training.csv")
+
+
+```
+
+# Cross validation
+
+# Expected out of sample error
+
+# Justification of choices
+
+# Predictions on test data
+```{r testing}
+testing <- read.csv("pml-testing.csv")
+```
