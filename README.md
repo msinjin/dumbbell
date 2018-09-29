@@ -1,4 +1,4 @@
-# dumbbell_har
+# dumbbell
 Human Activity Recognition: predicting dumbbell technique success from wearables.
 
 ## Background
@@ -8,9 +8,7 @@ This project seeks to determine the potential for real-time user feedback from m
 
 To this end, six participants were asked to perform dumbbell lifts correctly and incorrectly in five different ways while accelerometers on the belt, forearm, arm, and dumbbell recorded their movements.
 
-More information is available [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset) and in the related publication:
-
-Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+More information is available [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
 
 ## Data
 
@@ -27,3 +25,7 @@ Analyses were peformed using [R](https://www.r-project.org). Reporting written i
 ## Usage
 
 View the published report at ______.
+
+## Citatitions
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.

@@ -1,5 +1,5 @@
 ---
-title: "Human Activity Recognition: Technique"
+title: "Human Activity Recognition: Dumbbell technique"
 author: "Mark St. John"
 date: '2018-09-26'
 output: html_document
@@ -11,22 +11,194 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Background
 
+People regularly quantify how much of a particular activity they do with wearable devices, but they rarely quantify how well they do it. 
+
+This project seeks to determine the potential for real-time user feedback from model-based assessment of the quality, not quantity, of exercise technique.
+
+To this end, six participants were asked to perform dumbbell lifts correctly and incorrectly in five different ways while accelerometers on the belt, forearm, arm, and dumbbell recorded their movements.
+
+More information is available [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+## The data 
+
+The data for this project kindly provided by [Groupware@LES](http://groupware.les.inf.puc-rio.br), and can be downloaded from their website ( [training data (csv, 12MB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv), [test data (csv, 15 KB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv))
+
+```{r data_cleaning, message = F, warning = F}
+
+library(ggplot2)
+library(caret)
+library(plyr)
+
+# Read in the data, suppressing the assignment of factors and dealing with missing values.
+training <- read.csv("pml-training.csv", 
+                     stringsAsFactors = F, 
+                     na.strings = c("#DIV/0!","","NA"))
+testing <- read.csv("pml-testing.csv", 
+                    stringsAsFactors = F, 
+                    na.strings = c("#DIV/0!","","NA"))
+
+clean_data <- function(d){
+
+    # The data contain several unneccesary, non-sensor variables/features that need to be dropped. One problematic variable, "new_window", has levels "yes"/"no" in the training data, and only "no" in the testing data. "new_window", therefore, is likely a data flag the original researchers included to specify a subset of data for a purpose that is unknown (although it is likely these are summary statistics). Regardless, since "new_window" is a valid feature of only one dataset, all rows where "new_window" = "yes" will be removed and the feature dropped.
+    
+    d <- d[d$new_window == "no",]
+    drop_vars <- c("X", 
+                   "raw_timestamp_part_1", 
+                   "raw_timestamp_part_2", 
+                   "cvtd_timestamp", 
+                   "new_window", 
+                   "num_window")
+    keep_vars <- !names(d) %in% drop_vars
+    d <- d[, keep_vars]
+    
+    # Properly code factors:
+    all_possible_factor_vars <- c("user_name", "classe", "problem_id")
+    factor_vars <- names(d)[names(d) %in% all_possible_factor_vars]
+    for(i in factor_vars){
+        d[,i] <- as.factor(d[,i])
+    }
+    
+    # Fix character fields which should be numeric:
+    chr2num_vars <- names(d)[unlist(lapply(d, function(x) is.character(x)))]
+    for(i in chr2num_vars){
+        d[,i] <- as.numeric(d[,i]) 
+    }
+    
+    # Fix logical fields which should be numeric:
+    logical2num_vars <- names(d)[unlist(lapply(d, function(x) is.logical(x)))]
+    for(i in logical2num_vars){
+        d[,i] <- as.numeric(d[,i]) 
+    }
+    d
+}
+
+train_clean <- clean_data(training)
+test_clean <- clean_data(testing)
+
+# Some features/variables have no data in the test set. Furthermore, their names incicate that they are summary statistics (max_, min_, avg_, var_, etc.). Thus we limit the variables in the training set to those in the test set.
+no_test_data_var_names <- names(test_clean)[
+    unlist(lapply(test_clean, function(x) 
+        sum(is.na(x)))) == nrow(test_clean)
+    ]
+
+valid_test_names <- names(test_clean)[
+    !names(test_clean) %in% no_test_data_var_names
+    ]
+
+train_valid <- train_clean[,names(train_clean) %in% c(valid_test_names, "classe")]
+test_valid <- test_clean[, names(test_clean) %in% valid_test_names]
+
+# The provided "testing" dataset does not acutally have the variable we are trying to predict ("classe") and so it is impossible to use it to test our model. Thus we create training, validation and testing datasets from the provided training dataset and reserve the provided test dataset for the final prediction exercise.
+
+test_final <- test_valid
+
+# A complication to creating our data partitions is that there is clear evidence for dependence between predictor variables and test subjects. As well, we have an unequal number of observations of each test subject. 
+
+ggplot(train_valid, aes(x = seq_along(row.names(train_valid)), y = roll_belt, col = user_name)) +
+    geom_jitter(shape = 1)
+
+# Thus, to avoid the chance of unintended bias in the data partitions we create data partitions by individual and recombine. This guarantees no user bias accross data partitions. Granted, a simple random reshuffling of the dataset prior to creating partitions would likely produce similar results.
+
+list_of_data_partitions <- dlply(train_valid, "user_name", function(x){
+
+            inBuild <- createDataPartition(x[,"classe"], 
+                                           p = 0.7)[[1]]
+            build_df <- x[inBuild,]
+            validation_df <- x[-inBuild,]
+            inTrain <- createDataPartition(build_df[,"classe"], 
+                                           p = 0.7)[[1]]
+            train_df <- build_df[inTrain,]
+            test_df <- build_df[-inTrain,]
+            list(train_df = train_df, 
+                 validation_df = validation_df,
+                 test_df = test_df)
+        }
+    )
+
+train_df <- ldply(list_of_data_partitions, function(x) x[["train_df"]])
+validation_df <- ldply(list_of_data_partitions, function(x) x[["validation_df"]])
+test_df <- ldply(list_of_data_partitions, function(x) x[["test_df"]])
+
+# Confirm it all went to plan (Note, average mean relative differences approached 5% when partitioning data irrespective of subjects):
+all.equal(table(train_df$user_name)/nrow(train_df),
+          table(test_df$user_name)/nrow(test_df),
+          tolerance = 0.01)
+all.equal(table(train_df$user_name)/nrow(train_df),
+          table(validation_df$user_name)/nrow(validation_df),
+          tolerance = 0.01)
+
+# Remove user_name now that it is no longer needed
+remove_user <- function(x,var){
+    x[, !names(x) %in% var]
+    }
+train_df <- remove_user(train_df,"user_name")
+test_df <- remove_user(test_df,"user_name")
+validation_df <- remove_user(validation_df,"user_name")
+test_final <- remove_user(test_final,"user_name")
+
+# Clean up environment
+rm(list = ls()[!ls() %in% c("test_final", "train_df", "test_df", "validation_df")])
+```
+
 # Building the model
 
-```{r the_model}
+A number of classes of models were considered. Bagged (random forest, rf) and boosted (gradient boosted model, gbm) models were assumed to be the best approaches given the goal of the problem (predict classification), no need for model interpretability, and the type of data (massive number of predictors, likely high in collinearity, interactions and thresholds). However, regression (generalized linear model via penalized maximum likelihood, glmnet) and model-based prediction methods (linear discriminant analysis, lda) were considered for comparison and have the advantage of usually being faster (although this was not an important factor in choosing a model).
 
-training <- read.csv("pml-training.csv")
+## Cross validation
 
+We chose 10 by 5 repeated cross validation (10 folds, repeated 5 times) to estimate out of sample error using the training data as this gives an excellent balance of bias and variance. We increased the default tuning parameter `mtry` (`tuneLength`) from the default (3) to 10 to allow the more predictors to be assessed at each split in the rf model. This increased runtime significantly, but testing demonstrated that it did produce lower estimates of out of sample error. Pre processing the data was considered (centre, scale and PCA), but performed worse on all but regression (linear) models and so was only used for that once (`glmnet`).
 
+```{r cross_validation, message = F, cache = T}
+
+# Set up for all models ----
+set.seed(321)
+nearZeroVar(train_df) # no vars with zero variance, continue.
+# Use same training controls and CV folds from all models:
+myFolds <- createFolds(train_df$classe, 
+                       k = 10, 
+                       list = T, 
+                       returnTrain = T) 
+trControl <- trainControl(method = "repeatedcv", 
+                          classProbs = T, 
+                          repeats = 5, 
+                          index = myFolds, 
+                          verboseIter = T, 
+                          savePredictions = T)
+
+# Run all models ----
+# Using caretEnsenble to unify options,  caretList() creates a list of train() objects.
+library(caretEnsemble)
+library(ranger) # alternative to base rf model
+model_list <- caretList(classe ~ .,
+                        data = train_df,
+                        methodList = c(lda = "lda", 
+                                       gbm = "gbm", 
+                                       rf ="ranger"),
+                        tuneList = list(glmnet = caretModelSpec("glmnet",
+                                                                preProcess = c("center",
+                                                                               "scale"))),
+                        trControl = trControl,
+                        tuneLength = 10)
+resamps <- resamples(model_list)
+dotplot(resamps)
 ```
 
-# Cross validation
+### Expected out of sample error
 
-# Expected out of sample error
+Based on the dotplot, it appears model_ has a slight advantage, so let's compare out of sample error predictions for both models on the validation test set.
+```{r out_of_sample_error}
 
-# Justification of choices
-
-# Predictions on test data
-```{r testing}
-testing <- read.csv("pml-testing.csv")
+summary(resamps)
+confusionMatrix(predict(model_list$rf,validation_df),validation_df$classe)
+confusionMatrix(predict(model_list$gbm,validation_df),validation_df$classe)
 ```
+
+Leading us to conclude that model_x is the best, lets try it on the test set
+
+```{r test_sample_error}
+confusionMatrix(predict(model_list$rf,test_df),test_df$classe)
+```
+
+# Conclusions
+
+Our model allows us to predict the classification of dumbbell lifts with ##% accuracy. The approach to using wearable computing devices to determine the quality of exercise appears to have merit.
