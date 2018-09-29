@@ -24,7 +24,7 @@ Analyses were peformed using [R](https://www.r-project.org). Reporting written i
 
 ## Usage
 
-View the published report at ______.
+View the published report at https://msinjin.github.io/dumbbell/.
 
 ## Citatitions
 
