@@ -19,7 +19,9 @@ More information is available [here](http://groupware.les.inf.puc-rio.br/har) (s
 
 ## Data 
 
-The data for this project kindly provided by [Groupware@LES](http://groupware.les.inf.puc-rio.br), and can be downloaded from their website ([training data (csv, 12MB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv), [test data (csv, 15 KB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)). A considerable amount of cleaning was needed, as described next, prior to analysis.
+The data for this project kindly provided by [Groupware@LES](http://groupware.les.inf.puc-rio.br), and can be downloaded from their website ([training data (csv, 12MB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv), [test data (csv, 15 KB)](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)). 
+
+A considerable amount of cleaning was needed. It is documented next; however, one can [**skip to the section on model building if not interested**](#build).
 
 ```{r data_cleaning, message = F, warning = F}
 
@@ -90,13 +92,17 @@ test_valid <- test_clean[, names(test_clean) %in% valid_test_names]
 # The provided "testing" dataset does not acutally have the variable we are trying to predict ("classe") and so it is impossible to use it to test our model. Thus training, validation and testing datasets were created from the provided training dataset and reserve the provided test dataset for the final prediction exercise.
 
 test_final <- test_valid
+```
 
-# A complication to creating our data partitions is that there is clear evidence for dependence between predictor variables and test subjects. As well, there are an unequal number of observations of each test subject. For example, observe how half the subjects have "roll_belt" values consistently about zero while the other half are about 125-150.
-
+A complication to creating our data partitions is that there is clear evidence for dependence between predictor variables and test subjects. As well, there are an unequal number of observations of each test subject. For example, observe how half the subjects have "roll_belt" values consistently about zero while the other half are about 125-150.
+```{r ggplot}
 ggplot(train_valid, aes(x = seq_along(row.names(train_valid)), y = roll_belt, col = user_name)) +
     geom_jitter(shape = 1)
+```
 
-# Thus, to avoid the chance of unintended bias data partitions were created by individual and then recombined. This guaranteed no user bias accross data partitions. Granted, a simple random reshuffling of the dataset prior to creating partitions would likely produce similar results.
+Thus, to avoid the chance of unintended bias data partitions were created by individual and then recombined. This guaranteed no user bias accross data partitions. Granted, a simple random reshuffling of the dataset prior to creating partitions would likely produce similar results.
+
+```{r data_partition} 
 
 list_of_data_partitions <- dlply(train_valid, "user_name", function(x){
 
@@ -139,15 +145,15 @@ test_final <- remove_user(test_final,"user_name")
 rm(list = ls()[!ls() %in% c("test_final", "train_df", "test_df", "validation_df")])
 ```
 
-# Building the model
+# Building the model {#build}
 
-Different classes of models were considered as candidates to predict the classification of dumbbell lifts. Bagged (random forest, `rf`) and boosted (gradient boosted model, `gbm`) models were assumed to be the best approaches given a classification problem with no need for model interpretability. These models also perform well with the type of data provided (a massive number of predictors, likely high in collinearity, interactions and thresholds), relative to regression techniques. However, regression (generalized linear model via penalized maximum likelihood, `glmnet`) and model-based prediction methods (linear discriminant analysis, `lda`) were considered for comparison and have the advantage of usually being faster (although this was not an important factor in choosing a model).
+Different classes of models were considered as candidates to predict the classification of dumbbell lifts. Bagged (random forest, `rf`) and boosted (gradient boosting machine, `gbm`) models were assumed to be the best approaches given a classification problem with no need for model interpretability. These models also perform well with the type of data provided (a massive number of predictors, likely high in collinearity, interactions and thresholds), relative to regression techniques. However, regression (generalized linear model via penalized maximum likelihood, `glmnet`) and model-based prediction methods (linear discriminant analysis, `lda`) were considered for comparison and have the advantage of usually being faster (although this was not an important factor in choosing a model).
 
 ## Cross validation
 
 Repeated cross validation (10 folds, repeated 5 times) was chosen to estimate out of sample error using the training data as this gives an excellent balance of bias and variance. A large value of the tuning parameter (`tuneLength = 10`) was used to allow more predictors to be assessed at each split in the `rf` model. This increased runtime significantly, but testing demonstrated that it did produce lower estimates of out of sample error. Pre-processing the data was considered (centre, scale and PCA), but performed worse on all but regression models and so was only used for `glmnet`.
 
-```{r cross_validation, message = F, cache = T, results = 'hide'}
+```{r cross_validation, message = F, cache = T, cache.lazy= F, results = 'hide'}
 
 # Set up for all models ----
 set.seed(321)
@@ -186,15 +192,15 @@ dotplot(resamps)
 
 ### Expected out of sample error
 
-Based on the dotplot, it appears the `rf` model had a slight advantage with a predicted out of sample error rate of less than 3%. 
+Based on the dotplot, it appears the `rf` and `gbm` models perform well, with a slight advantage to `rf` with a predicted out of sample error rate of less than 3%. 
 
 ```{r oob_rf}
 summary(resamps)
 model_list$rf$finalModel
 ```
-A comparison of predictions for both models on the validation test set (not shown) confirms this and that the `gbm` model was also a condidate.
+A comparison of predictions for both models on the validation test set (not shown) confirms that the `gbm` model was also a candidate.
 
-Leading us to conclude that the `rf` model was the most accurate. Finally, performace of the `rf model was assessed on the test set where is was confirmed to perform well.
+Finally, performace of the `rf` model was assessed on the test set where is was confirmed to perform well.
 
 ```{r test_sample_error}
 confusionMatrix(predict(model_list$rf,test_df),test_df$classe)
